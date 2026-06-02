@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYS_AUTH v2.4.1</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,700;1,400&display=swap');
+
+:root {
+  --bg: #080b0f;
+  --surface: #0e1117;
+  --panel: #111520;
+  --border: #1a2035;
+  --border2: #232d45;
+  --green: #39ff88;
+  --green-dim: rgba(57,255,136,0.12);
+  --cyan: #00cfff;
+  --red: #ff4466;
+  --red-dim: rgba(255,68,102,0.12);
+  --yellow: #f0c040;
+  --text: #b0bcd4;
+  --dim: #3d4f6e;
+  --comment: #4a5c80;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+}
+
+/* scanlines */
+body::after {
+  content:'';
+  position:fixed;
+  inset:0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events:none;
+  z-index:9999;
+}
+
+/* grid bg */
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ===== TERMINAL SCREEN ===== */
+#terminal-screen {
+  width: min(700px, 95vw);
+  animation: screenIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+@keyframes screenIn {
+  from { opacity:0; transform:scale(0.96) translateY(20px); }
+  to   { opacity:1; transform:scale(1) translateY(0); }
+}
+
+.window {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 40px 120px rgba(0,0,0,0.7),
+    0 0 60px rgba(57,255,136,0.03);
+}
+
+.titlebar {
+  background: #090c11;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot { width:12px; height:12px; border-radius:50%; }
+.dot.r { background:#ff5f57; }
+.dot.y { background:#febc2e; }
+.dot.g { background:#28c840; }
+.titlebar-text {
+  flex:1; text-align:center;
+  font-size:11px; color:var(--comment);
+  letter-spacing:.08em;
+}
+
+.tabs {
+  background: #090c11;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  font-size: 12px;
+}
+.tab {
+  padding: 7px 18px;
+  color: var(--comment);
+  border-right: 1px solid var(--border);
+  cursor: default;
+}
+.tab.active {
+  background: var(--surface);
+  color: var(--green);
+  border-top: 1px solid var(--green);
+  margin-top:-1px;
+}
+
+.term-body {
+  padding: 22px 26px 28px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.8;
+  opacity: 0;
+  animation: lineIn 0.25s ease both;
+}
+@keyframes lineIn {
+  from { opacity:0; transform:translateX(-4px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+
+.prompt-sym { color: var(--green); flex-shrink:0; }
+.kw   { color: var(--cyan); }
+.arg  { color: var(--yellow); }
+.val  { color: #a78bfa; }
+.ok   { color: var(--green); }
+.err  { color: var(--red); }
+.dim  { color: var(--comment); }
+.warn { color: var(--yellow); }
+
+.spacer { height: 10px; }
+
+/* Input row */
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.input-row .prompt-sym { color: var(--green); }
+
+#user-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--green);
+  caret-color: var(--green);
+  flex: 1;
+  letter-spacing: 0.05em;
+}
+#user-input::placeholder { color: var(--dim); }
+
+/* Status bar */
+.statusbar {
+  background: #090c11;
+  border-top: 1px solid var(--border);
+  padding: 5px 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--comment);
+  letter-spacing: .06em;
+}
+.status-ok   { color: var(--green); }
+.status-err  { color: var(--red); }
+.status-warn { color: var(--yellow); }
+
+/* Shake animation */
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  15%     { transform: translateX(-6px); }
+  30%     { transform: translateX(6px); }
+  45%     { transform: translateX(-5px); }
+  60%     { transform: translateX(5px); }
+  75%     { transform: translateX(-3px); }
+  90%     { transform: translateX(3px); }
+}
+.shake { animation: shake 0.5s ease both !important; }
+
+/* ===== BIRTHDAY SCREEN ===== */
+#birthday-screen {
+  display: none;
+  width: min(700px, 95vw);
+  text-align: center;
+}
+
+.bday-window {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 40px 120px rgba(0,0,0,0.8);
+}
+
+.bday-titlebar {
+  background: #090c11;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bday-body {
+  padding: 36px 32px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Confetti canvas */
+#confetti-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bday-badge {
+  display: inline-block;
+  background: rgba(57,255,136,0.08);
+  border: 1px solid rgba(57,255,136,0.25);
+  color: var(--green);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing:.1em;
+  margin-bottom: 20px;
+  animation: badgeIn 0.5s ease both;
+}
+@keyframes badgeIn {
+  from { opacity:0; transform:scale(0.85); }
+  to   { opacity:1; transform:scale(1); }
+}
+
+.bday-name {
+  font-size: clamp(28px, 7vw, 52px);
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: -.02em;
+  line-height: 1;
+  margin-bottom: 6px;
+  text-shadow: 0 0 40px rgba(57,255,136,0.35);
+  animation: nameIn 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+}
+@keyframes nameIn {
+  from { opacity:0; transform: scale(0.7) translateY(20px); }
+  to   { opacity:1; transform: scale(1) translateY(0); }
+}
+
+.bday-title {
+  font-size: clamp(13px, 3vw, 20px);
+  color: var(--cyan);
+  letter-spacing:.15em;
+  margin-bottom: 32px;
+  animation: fadeSlide 0.6s ease 0.3s both;
+}
+
+@keyframes fadeSlide {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.commit-log {
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+  margin-bottom: 28px;
+  animation: fadeSlide 0.6s ease 0.5s both;
+}
+
+.commit-header-row {
+  background: #090c11;
+  padding: 8px 14px;
+  font-size: 10px;
+  color: var(--comment);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 75px 1fr 90px;
+  gap: 10px;
+  letter-spacing:.08em;
+}
+
+.commit-row {
+  padding: 10px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 75px 1fr 90px;
+  gap: 10px;
+  transition: background .15s;
+}
+.commit-row:last-child { border-bottom:none; }
+.commit-row:hover { background: rgba(255,255,255,0.025); }
+
+.sha  { color: var(--yellow); }
+.msg  { color: var(--text); }
+.msg .emo { margin-right: 5px; }
+.ts   { color: var(--comment); font-size:11px; }
+
+.bday-message {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.8;
+  margin-bottom: 28px;
+  padding: 18px 20px;
+  background: var(--panel);
+  border-left: 3px solid var(--green);
+  border-radius: 0 6px 6px 0;
+  text-align: left;
+  animation: fadeSlide 0.6s ease 0.7s both;
+}
+.bday-message .c { color: var(--comment); font-style: italic; }
+.bday-message .h { color: var(--green); }
+.bday-message .v { color: var(--cyan); }
+
+.bday-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--comment);
+  animation: fadeSlide 0.6s ease 0.9s both;
+}
+.bday-footer .sig { }
+.bday-footer .sig span { color: var(--green); }
+.bday-footer .version {
+  background: rgba(57,255,136,0.07);
+  border: 1px solid rgba(57,255,136,0.18);
+  color: var(--green);
+  padding: 4px 10px;
+  border-radius: 20px;
+  animation: pulse 2s ease 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(57,255,136,0.3); }
+  50%      { box-shadow: 0 0 0 7px rgba(57,255,136,0); }
+}
+
+/* Glow line */
+.glow-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  margin: 24px 0;
+  opacity: 0.3;
+}
+
+/* Cursor blink */
+.cursor {
+  display: inline-block;
+  width: 8px; height: 14px;
+  background: var(--green);
+  vertical-align: middle;
+  margin-left: 1px;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity:0; } }
+
+/* Transition overlay */
+#transition-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--green);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+</style>
+</head>
+<body>
+
+<div id="transition-overlay"></div>
+
+<!-- ===== TERMINAL AUTH ===== -->
+<div id="terminal-screen">
+  <div class="window" id="main-window">
+    <div class="titlebar">
+      <div class="dot r"></div>
+      <div class="dot y"></div>
+      <div class="dot g"></div>
+      <span class="titlebar-text">SYSTEM TERMINAL — auth@secure:~  [v2.4.1]</span>
+    </div>
+    <div class="tabs">
+      <div class="tab active">auth.sh</div>
+      <div class="tab dim">config.yml</div>
+      <div class="tab dim">logs</div>
+    </div>
+
+    <div class="term-body" id="term-body">
+      <!-- Lines injected by JS -->
+    </div>
+
+    <div class="statusbar">
+      <span id="status-left" class="status-warn">● AWAITING INPUT</span>
+      <span>UTF-8 &nbsp;|&nbsp; LF &nbsp;|&nbsp; bash</span>
+      <span id="status-right">Ln 1, Col 1</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== BIRTHDAY SCREEN ===== -->
+<div id="birthday-screen">
+  <div class="bday-window">
+    <div class="bday-titlebar">
+      <div class="dot r"></div>
+      <div class="dot y"></div>
+      <div class="dot g"></div>
+      <span class="titlebar-text" style="flex:1;text-align:center;font-size:11px;color:var(--comment)">birthday.exe — ACCESS GRANTED 🎉</span>
+    </div>
+    <div class="bday-body">
+      <canvas id="confetti-canvas"></canvas>
+
+      <div class="bday-badge">// IDENTITY VERIFIED</div>
+
+      <div class="bday-name">LACAM</div>
+      <div class="bday-title">JOYEUX ANNIVERSAIRE</div>
+
+      <div class="commit-log">
+        <div class="commit-header-row">
+          <span>SHA</span><span>COMMIT MESSAGE</span><span>TIMESTAMP</span>
+        </div>
+        <div class="commit-row">
+          <span class="sha">a1b2fe3</span>
+          <span class="msg"><span class="emo">🎂</span>feat: +1 année dans ta vie</span>
+          <span class="ts">aujourd'hui</span>
+        </div>
+        <div class="commit-row">
+          <span class="sha">c0de420</span>
+          <span class="msg"><span class="emo">🧠</span>refactor: upgrade RAM & problem-solving threads</span>
+          <span class="ts">+365 days ago</span>
+        </div>
+        <div class="commit-row">
+          <span class="sha">0xc0ffee</span>
+          <span class="msg"><span class="emo">🏋🏾‍♂️</span>fix: encore plus de sport pour maintenir la santé</span>
+          <span class="ts">ongoing</span>
+        </div>
+        <div class="commit-row">
+          <span class="sha">deadc0d</span>
+          <span class="msg"><span class="emo">🚀</span>chore: keep shipping, stay dangerous</span>
+          <span class="ts">∞</span>
+        </div>
+      </div>
+
+      <div class="bday-message">
+        <span class="c">// De la part de God_iven</span><br><br>
+        <span class="h">lacam</span> <span style="color:var(--text)">= {</span><br>
+        &nbsp;&nbsp;<span class="v">age</span>: <span style="color:#f0c040">++</span><span style="color:var(--text)">,</span><br>
+        &nbsp;&nbsp;<span class="v">niveau</span>: <span style="color:#a78bfa">"UNLOCKED"</span><span style="color:var(--text)">,</span><br>
+        &nbsp;&nbsp;<span class="v">message</span>: <span style="color:#a78bfa">"La vie se débug ligne par ligne tel un CODE,</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#a78bfa"> un grand joyeux anniversaire à toi boss"</span><br>
+        <span style="color:var(--text)">}</span>
+      </div>
+
+      <div class="glow-divider"></div>
+
+      <div class="bday-footer">
+        <div class="sig"><span class="c">// signé</span> <span>GINYX</span></div>
+        <div class="version">v1.0.0-birthday 🎉</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== TERMINAL LOGIC =====================
+
+const body = document.getElementById('term-body');
+const statusLeft = document.getElementById('status-left');
+const statusRight = document.getElementById('status-right');
+
+let attempt = 0;
+let inputRow = null;
+let inputEl = null;
+let phase = 'nickname'; // 'nickname' | 'locked'
+
+function addLine(html, delay = 0, cls = '') {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const div = document.createElement('div');
+      div.className = 'line ' + cls;
+      div.innerHTML = html;
+      div.style.animationDelay = '0ms';
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+      resolve();
+    }, delay);
+  });
+}
+
+function addSpacer(delay = 0) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.className = 'spacer';
+      body.appendChild(d);
+      resolve();
+    }, delay);
+  });
+}
+
+function removeInputRow() {
+  if (inputRow) { inputRow.remove(); inputRow = null; inputEl = null; }
+}
+
+function createInputRow(promptText = '$') {
+  removeInputRow();
+  inputRow = document.createElement('div');
+  inputRow.className = 'input-row';
+  inputRow.innerHTML = `<span class="prompt-sym">${promptText}</span>`;
+  inputEl = document.createElement('input');
+  inputEl.id = 'user-input';
+  inputEl.type = 'text';
+  inputEl.autocomplete = 'off';
+  inputEl.spellcheck = false;
+  inputEl.placeholder = '';
+  inputRow.appendChild(inputEl);
+  body.appendChild(inputRow);
+  body.scrollTop = body.scrollHeight;
+  setTimeout(() => inputEl.focus(), 100);
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleSubmit(inputEl.value.trim());
+    statusRight.textContent = `Ln ${body.children.length}, Col ${inputEl.value.length + 1}`;
+  });
+
+  document.addEventListener('click', () => { if(inputEl) inputEl.focus(); });
+}
+
+async function bootSequence() {
+  await addLine(`<span class="dim">┌─────────────────────────────────────────────────┐</span>`, 200);
+  await addLine(`<span class="dim">│</span>  <span class="kw">SECURE SYSTEM TERMINAL</span>  <span class="dim">v2.4.1 — GINYX-God_iven</span>  <span class="dim">│</span>`, 350);
+  await addLine(`<span class="dim">└─────────────────────────────────────────────────┘</span>`, 500);
+  await addSpacer(650);
+  await addLine(`<span class="dim">[  0.001]</span> <span class="ok">✓</span> Kernel loaded`, 750);
+  await addLine(`<span class="dim">[  0.023]</span> <span class="ok">✓</span> Auth module initialized`, 900);
+  await addLine(`<span class="dim">[  0.047]</span> <span class="ok">✓</span> Encryption layer active`, 1050);
+  await addLine(`<span class="dim">[  0.089]</span> <span class="warn">⚠</span> Awaiting user identification`, 1200);
+  await addSpacer(1400);
+  await addLine(`<span class="prompt-sym">$</span> <span class="kw">./auth</span> <span class="arg">--mode=identity</span> <span class="arg">--required=nickname</span>`, 1550);
+  await addSpacer(1750);
+  await addLine(`<span class="dim">Entrez votre nom pour continuer :</span>`, 1900);
+  setTimeout(createInputRow, 2100);
+  statusLeft.textContent = '● AWAITING INPUT';
+  statusLeft.className = 'status-warn';
+}
+
+async function handleSubmit(val) {
+  removeInputRow();
+  const displayVal = val || '(vide)';
+
+  await addLine(`<span class="prompt-sym">$</span> <span style="color:var(--green)">${displayVal}</span>`, 0);
+
+  if (val.toLowerCase() === 'lacam') {
+    // SUCCESS
+    statusLeft.textContent = '● ACCESS GRANTED';
+    statusLeft.className = 'status-ok';
+    await addSpacer(100);
+    await addLine(`<span class="dim">[AUTH]</span> <span class="ok">✓ Identité reconnue — chargement...</span>`, 200);
+    await addLine(`<span class="dim">[SYS ]</span> <span class="kw">Initializing</span> <span class="val">birthday.exe</span> <span class="dim">...</span>`, 450);
+    await addLine(`<span class="dim">[SYS ]</span> <span class="ok">✓ Module chargé — redirection en cours</span>`, 700);
+
+    setTimeout(transitionToBirthday, 1200);
+  } else {
+    attempt++;
+    // ERROR
+    document.getElementById('main-window').classList.add('shake');
+    setTimeout(() => document.getElementById('main-window').classList.remove('shake'), 600);
+
+    statusLeft.textContent = `● AUTH FAILED (attempt ${attempt})`;
+    statusLeft.className = 'status-err';
+
+    await addSpacer(50);
+    await addLine(`<span class="dim">[AUTH]</span> <span class="err">✗ ERREUR: Identifiant non reconnu → "${displayVal}"</span>`, 100);
+    await addLine(`<span class="dim">[AUTH]</span> <span class="err">  CODE: 403_IDENTITY_MISMATCH</span>`, 260);
+    await addLine(`<span class="dim">[SYS ]</span> <span class="warn">⚠ Accès refusé. Entrez le surnom.</span>`, 420);
+    await addSpacer(580);
+
+    setTimeout(createInputRow, 700);
+  }
+}
+
+function transitionToBirthday() {
+  const overlay = document.getElementById('transition-overlay');
+  overlay.style.transition = 'opacity 0.3s ease';
+  overlay.style.opacity = '1';
+  overlay.style.pointerEvents = 'all';
+
+  setTimeout(() => {
+    document.getElementById('terminal-screen').style.display = 'none';
+    document.getElementById('birthday-screen').style.display = 'block';
+
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.style.pointerEvents = 'none';
+      startConfetti();
+    }, 400);
+  }, 350);
+}
+
+// ===================== CONFETTI =====================
+function startConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.parentElement.offsetWidth;
+  canvas.height = canvas.parentElement.offsetHeight;
+
+  const colors = ['#39ff88','#00cfff','#f0c040','#ff6b9d','#a78bfa','#ff4466'];
+  const chars  = ['{}','()','//','01','++','&&','#!'];
+
+  const particles = Array.from({length: 80}, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height - canvas.height,
+    vx: (Math.random()-0.5)*2,
+    vy: 1.5 + Math.random()*2.5,
+    color: colors[Math.floor(Math.random()*colors.length)],
+    char: Math.random() > 0.5 ? chars[Math.floor(Math.random()*chars.length)] : null,
+    size: 5 + Math.random()*8,
+    rot: Math.random()*360,
+    rotV: (Math.random()-0.5)*4,
+    alpha: 1,
+    life: 1,
+  }));
+
+  let frame = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.rotV;
+      if (p.y > canvas.height * 0.7) p.life -= 0.012;
+      p.alpha = Math.max(0, p.life);
+
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI/180);
+
+      if (p.char) {
+        ctx.font = `bold ${p.size + 4}px JetBrains Mono, monospace`;
+        ctx.fillStyle = p.color;
+        ctx.fillText(p.char, 0, 0);
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2, -p.size/4, p.size, p.size/2);
+      }
+      ctx.restore();
+    });
+
+    frame++;
+    if (frame < 300) requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// Boot
+bootSequence();
+</script>
+</body>
+</html>
